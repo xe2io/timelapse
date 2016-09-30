@@ -1,0 +1,8 @@
+DATE=$(date +%Y%m%d)
+# timelapse capture interval, in seconds
+INTERVAL=10
+SOURCE_DIR=SOURCE
+
+# 5-digits for photos supports ~11.57 days of photos @ 10s interval
+gphoto2 --capture-image-and-download --filename=$SOURCE_DIR/timelapse_$DATE}%5n.nef -I $INTERVAL
+
