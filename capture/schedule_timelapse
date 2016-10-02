@@ -1,0 +1,60 @@
+#!/bin/bash
+
+# Inputs:
+# -n: name of timelapse folder, e.g. 20161001_description
+# -i: interval between photos in seconds, e.g. 10
+# One of the following: (if not specified, will be indefinite until manually stopped)
+# -f: number of frames to take
+# -d: duration, e.g. d/h/m (TODO)
+
+# Implemented: $0 <at time> <folder name> [num frames] 
+if [[ $# -lt 2 ]]; then
+    echo "Usage:"
+    echo $(basename $0) " <at time> <folder name> [num frames]"
+    echo "Current interval is 10 seconds (6 per minute), max 99999 photos"
+    echo "at timespec help: /usr/share/doc/at/timespec"
+    exit 1
+fi
+
+
+AT=$1
+FOLDER=$2
+
+# Folder structure within folder:
+# SOURCE - raw files go here
+# PREVIEW - previews (preview jpg extracted from raw)
+# RENDER - rendered videos
+SOURCE_DIR=$SOURCE/SOURCE
+PREVIEW_DIR=$FOLDER/PREVIEW
+DATE=$(date +%Y%m%d)
+FILENAME="timelapse_${DATE}%5n.%C"
+INTERVAL=10
+
+
+# Set frames argument to empty string
+FRAMES=""
+# If the number of frames is not defined, use continuous
+if [[ ! -z $3 ]]; then
+    # check that num frames specified is > 0 (no conversion done)
+    NUM_FRAMES=$3
+    if [[ $NUM_FRAMES -gt 0 ]]; then
+        FRAMES="--frames=$NUM_FRAMES"
+    fi
+fi
+
+# How to validate the at time?
+
+# Make the folder
+# Abort if the folder already exists since we don't inspect contents
+if [[ -e $FOLDER ]]; then
+    print "Timelapse folder '$FOLDER' already exists."
+    exit 1
+fi
+
+# Write screen config
+# DEBUG echo for now
+CMD_CAPTURE="gphoto2 --capture-image-and-download --filename=$SOURCE_DIR/$FILENAME -I $INTERVAL $FRAMES"
+echo $CMD_CAPTURE
+
+# Run screen
+
