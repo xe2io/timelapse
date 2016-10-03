@@ -1,0 +1,7 @@
+#!/bin/bash
+
+echo "Action: $ACTION"
+echo "Argument: $ARGUMENT"
+
+exit 0
+

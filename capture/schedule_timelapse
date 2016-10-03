@@ -30,6 +30,10 @@ DATE=$(date +%Y%m%d)
 FILENAME="timelapse_${DATE}%5n.%C"
 INTERVAL=10
 
+# Hook script which is called by gphoto2 on each action (init, start download stop)
+PREFIX_DIR=$(dirname $0)
+HOOKSCRIPT="timelapse_hook"
+
 
 # Set frames argument to empty string
 FRAMES=""
@@ -44,16 +48,22 @@ fi
 
 # How to validate the at time?
 
+# Check that the hook script exists and is executable
+if [[ ! -x $HOOKSCRIPT ]]; then
+    echo "Hook script for gphoto2 is not executable."
+    exit 1
+fi
+
 # Make the folder
 # Abort if the folder already exists since we don't inspect contents
 if [[ -e $FOLDER ]]; then
-    print "Timelapse folder '$FOLDER' already exists."
+    echo "Timelapse folder '$FOLDER' already exists."
     exit 1
 fi
 
 # Write screen config
 # DEBUG echo for now
-CMD_CAPTURE="gphoto2 --capture-image-and-download --filename=$SOURCE_DIR/$FILENAME -I $INTERVAL $FRAMES"
+CMD_CAPTURE="gphoto2 --capture-image-and-download --filename=$SOURCE_DIR/$FILENAME -I $INTERVAL $FRAMES --hook-script $PREFIX_DIR/$HOOKSCRIPT"
 echo $CMD_CAPTURE
 
 # Run screen
