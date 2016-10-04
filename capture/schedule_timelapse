@@ -80,7 +80,7 @@ echo "--------------------------------------------------" >> $LOGFILE
 CMD_CAPTURE="gphoto2 --capture-image-and-download --filename=$SOURCE_DIR/$FILENAME -I $INTERVAL $FRAMES --hook-script $EXEC_DIR/$HOOKSCRIPT"
 
 # Create screen session with name matching timelapse dir
-SCREEN_NAME=TIMELAPSE-$TIMELAPSE_DIR
+SCREEN_NAME=TIMELAPSE-$TIMELAPSE_DIR.$$
 screen -dmS $SCREEN_NAME -t log tail -f $LOGFILE
 
 SCREEN_CMD="screen -S $SCREEN_NAME -X screen -t capture $CMD_CAPTURE"
