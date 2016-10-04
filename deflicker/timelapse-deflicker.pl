@@ -26,9 +26,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-# Modifications by Jonathan Chen (anomalyconcept@gmail.com)
-# - Parallelize when able
-
 # Needed packages
 use Getopt::Std;
 use strict "vars";
@@ -37,16 +34,76 @@ use Image::Magick;
 use Data::Dumper;
 use File::Type;
 use Term::ProgressBar;
+use MCE::Loop;
 
 #use File::Spec;
 
 # Global variables
 my $VERBOSE       = 0;
 my $DEBUG         = 0;
-my $RollingWindow = 15;
+my $RollingWindow = 30;
 my $Passes        = 1;
-# Number of threads to use; TODO: autodetect based on processor topology/input
-my $THREADS       = 4;
+my $g_jobprogress = 0;
+my $g_progress;
+my $OUTPUT_DIR    = "Deflickered";
+
+#####################
+# Function to calculate luminance, MCE
+sub worker_calculate_luminance
+{
+    my $index = shift;
+    my $file = shift;
+
+    #print MCE->wid . " Processing $file [$index]\n";
+
+    my $image = Image::Magick->new;
+    $image->Read($file);
+    my @statistics = $image->Statistics();
+    my $R          = @statistics[ ( 0 * 7 ) + 3 ];
+    my $G          = @statistics[ ( 1 * 7 ) + 3 ];
+    my $B          = @statistics[ ( 2 * 7 ) + 3 ];
+
+    # Magic values
+    # 0.2126 * $R + 0.7152 * $G + 0.0722 * $B;
+    my $luminance = 0.299 * $R + 0.587 * $G + 0.114 * $B;
+
+    my $luminance_H_ref = {};
+    $luminance_H_ref->{'filename'} = $file;
+    $luminance_H_ref->{'value'} = $luminance;
+    $luminance_H_ref->{'original'} = $luminance;
+
+    # Print some status message
+    
+    # Update progressbar
+    MCE->do("update_progressbar");
+    MCE->gather($index, $luminance_H_ref);
+}
+
+# Function to update the global progressbar
+sub update_progressbar() 
+{
+    $g_progress->update(++$g_jobprogress);
+}
+
+# Function to change luminance, MCE
+sub worker_change_luminance
+{
+    my $luminance_H_ref = shift;
+
+    # probably not thread-safe
+    verbose("Changing luminance of $luminance_H_ref->{filename} from $luminance_H_ref->{original} to $luminance_H_ref->{value}.\n");
+
+    my $brightness = ( 1 / ( $luminance_H_ref->{original} / $luminance_H_ref->{value} ) ) * 100;
+
+    my $image = Image::Magick->new;
+    $image->Read( $luminance_H_ref->{filename} );
+
+    $image->Mogrify( 'modulate', brightness => $brightness );
+
+    #$image->Gamma( gamma => $gamma, channel => 'All' );
+    $image->Write( $OUTPUT_DIR . "/" . $luminance_H_ref->{filename} );
+    MCE->do("update_progressbar");
+}
 
 #####################
 # handle flags and arguments
@@ -68,66 +125,45 @@ $Passes        = $opt{'p'} if defined( $opt{'p'} );
 die "The rolling average window for luminance smoothing should be a positive number greater or equal to 2" if ( $RollingWindow < 2 );
 die "The number of passes should be a positive number greater or equal to 1"                               if ( $Passes < 1 );
 
-# main program content; data structure:
-# count = index, sequential based on filenames (sorted); basically an array
-#   order of count is important for window
-# luminance->{count}->{value = luminance value, new based on averaged window}
-# luminance->{count}->{original = original luminance value, calculated}
-# luminance->{count}->{filename = original filename without path}
+# main program content
 my %luminance;
 
 my $data_dir = ".";
 
 opendir( DATA_DIR, $data_dir ) || die "Cannot open $data_dir\n";
 my @files = readdir(DATA_DIR);
-closedir(DATA_DIR);
 @files = sort @files;
 
-my $count = 0;
-
-# Generate a file->index mapping so we can 
-
-# TODO: change this check; doesn't make sense to deflicker 1 image
-# Are there other considerations with window size and num images to deflicker?
-if ( scalar @files != 0 ) {
-
-  say "Original luminance of Images is being calculated";
-  say "Please be patient as this might take several minutes...";
-
-  foreach my $filename (@files) {
-
+# Make sure we only use image files
+my @img_files = ();
+foreach my $filename (@files) {
     my $ft   = File::Type->new();
     my $type = $ft->mime_type($filename);
 
     #say "$data_dir/$filename";
     my ( $filetype, $fileformat ) = split( /\//, $type );
-    if ( $filetype eq "image" ) {
-      verbose("Original luminance of Image $filename is being processed...\n");
-
-      my $image = Image::Magick->new;
-      $image->Read($filename);
-      my @statistics = $image->Statistics();
-      my $R          = @statistics[ ( 0 * 7 ) + 3 ];
-      my $G          = @statistics[ ( 1 * 7 ) + 3 ];
-      my $B          = @statistics[ ( 2 * 7 ) + 3 ];
-
-      $luminance{$count}{original} = 0.299 * $R + 0.587 * $G + 0.114 * $B;
-
-      #$luminance{$count}{original} = 0.2126 * $R + 0.7152 * $G + 0.0722 * $B;
-      $luminance{$count}{value}    = $luminance{$count}{original};
-      $luminance{$count}{filename} = $filename;
-
-      #$luminance{$count}{abs_path_filename} = File::Spec->rel2abs($filename);
-      $count++;
-    }
-
-  }
-
+    if($filetype eq "image")
+    {
+        push(@img_files, $filename);
+    }   
 }
 
-my $max_entries = scalar( keys %luminance );
+my $num_images = scalar(@img_files);
 
-say "$max_entries images found in the folder which will be processed further.";
+if ( $num_images > 1 ) {
+    say "Original luminance of Images is being calculated";
+    say "Please be patient as this might take several minutes...";
+
+    # Autocalculate workers
+    MCE::Loop::init { chunk_size => 1 };
+
+    $g_progress = Term::ProgressBar->new( { count => $num_images } );
+
+    %luminance = mce_loop { worker_calculate_luminance($_, $img_files[$_]) } (0..$num_images-1);
+} 
+
+say "$num_images images found in the folder which will be processed further.";
+
 
 my $CurrentPass = 1;
 
@@ -138,15 +174,24 @@ while ( $CurrentPass <= $Passes ) {
 }
 
 say "\n\n-------------- CHANGING OF BRIGHTNESS WITH THE CALCULATED VALUES --------------\n";
-luminance_change();
+# Create the output directory if it doesn't exist
+if(! -d $OUTPUT_DIR)
+{
+    mkdir($OUTPUT_DIR) || die "Error creating directory: $!\n";
+}
 
+# Create the progress bar
+$g_jobprogress = 0;
+$g_progress = Term::ProgressBar->new( { count => $num_images } );
+my %ret_status = mce_loop { worker_change_luminance($luminance{$_}) } (0..$num_images-1);
+
+#luminance_change();
 say "\n\nJob completed";
-say "$max_entries files have been processed";
+say "$num_images files have been processed";
 
 #####################
 # Helper routines
 
-# NOTE: This might still need to be serial since it uses a window
 sub luminance_calculation {
   my $max_entries = scalar( keys %luminance );
   my $progress    = Term::ProgressBar->new( { count => $max_entries } );
@@ -168,46 +213,12 @@ sub luminance_calculation {
   }
 }
 
-sub luminance_change {
-  my $max_entries = scalar( keys %luminance );
-  my $progress = Term::ProgressBar->new( { count => $max_entries } );
-
-    # NOTE: can parallelize since the task is per-image based on precalculated values
-  for ( my $i = 0; $i < $max_entries; $i++ ) {
-    debug("Original luminance of $luminance{$i}{filename}: $luminance{$i}{original}\n");
-    debug(" Changed luminance of $luminance{$i}{filename}: $luminance{$i}{value}\n");
-
-    my $brightness = ( 1 / ( $luminance{$i}{original} / $luminance{$i}{value} ) ) * 100;
-
-    #my $gamma = 1 / ( $luminance{$i}{original} / $luminance{$i}{value} );
-
-    debug("Imagemagick will set brightness of $luminance{$i}{filename} to: $brightness\n");
-
-    #debug("Imagemagick will set gamma value of $luminance{$i}{filename} to: $gamma\n");
-
-    if ( !-d "Deflickered" ) {
-      mkdir("Deflickered") || die "Error creating directory: $!\n";
-    }
-
-    debug("Changing brightness of $luminance{$i}{filename} and saving to the destination directory...\n");
-    my $image = Image::Magick->new;
-    $image->Read( $luminance{$i}{filename} );
-
-    $image->Mogrify( 'modulate', brightness => $brightness );
-
-    #$image->Gamma( gamma => $gamma, channel => 'All' );
-    $image->Write( "Deflickered/" . $luminance{$i}{filename} );
-
-    $progress->update( $i + 1 );
-  }
-}
-
 sub usage {
 
   # prints the correct use of this script
   say "Usage:";
-  say "-w    Choose the rolling average window for luminance smoothing (Default 15)";
-  say "-p    Number of luminance smoothing passes (Default 1)";
+  say "-w    Choose the rolling average window for luminance smoothing (Default $RollingWindow)";
+  say "-p    Number of luminance smoothing passes (Default $Passes)";
   say "       Sometimes 2 passes might give better results.";
   say "       Usually you would not want a number higher than 2.";
   say "-h    Usage";
