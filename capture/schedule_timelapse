@@ -10,7 +10,10 @@
 # Implemented: $0 <at time> <folder name> [num frames] 
 if [[ $# -lt 2 ]]; then
     echo "Usage:"
-    echo $(basename $0) " <at time> <folder name> [num frames]"
+    echo $(basename $0) "<at time> <folder name> [num frames]"
+    echo ""
+    echo "Schedules a timelapse to start at the specified <at time> with files"
+    echo "saved to <folder name>."
     echo "Current interval is 10 seconds (6 per minute), max 99999 photos"
     echo "at timespec help: /usr/share/doc/at/timespec"
     exit 1
@@ -27,19 +30,22 @@ TIMELAPSE_DIR=$2
 SOURCE_DIR=$TIMELAPSE_DIR/SOURCE
 PREVIEW_DIR=$TIMELAPSE_DIR/PREVIEW
 DATE=$(date +%Y%m%d)
-FILENAME="timelapse_${DATE}%5n.%C"
+FILENAME="timelapse_${DATE}-%5n.%C"
 INTERVAL=10
 
 # Hook script which is called by gphoto2 on each action (init, start download stop)
 EXEC_DIR=$(dirname $0)
 HOOKSCRIPT="timelapse_hook"
 
+# Set frames argument to empty string
+FRAMES=""
+
+# DEBUG echo for now
 # If the number of frames is not defined, use continuous
 if [[ ! -z $3 ]]; then
     # check that num frames specified is > 0 (no conversion done)
     NUM_FRAMES=$3
-    if [[ $NUM_FRAMES -gt 0 ]]; then
-        FRAMES="--frames=$NUM_FRAMES"
+    if [[ $NUM_FRAMES -gt 0 ]]; then FRAMES="--frames=$NUM_FRAMES"
     fi
 fi
 
@@ -66,36 +72,26 @@ fi
 # Log file for status/output of gphoto2+hook scripts
 # Logfile will be overwritten (but it shouldn't exist since we just made the dir)
 LOGFILE=$TIMELAPSE_DIR/timelapse.log
+# Export variable for hook script
+export TIMELAPSE_LOGFILE=$LOGFILE
 echo "Timelapse Scheduler started at $(date +'%D %T')" > $LOGFILE
+echo "--------------------------------------------------" >> $LOGFILE
 
-# Set frames argument to empty string
-FRAMES=""
-
-# DEBUG echo for now
 CMD_CAPTURE="gphoto2 --capture-image-and-download --filename=$SOURCE_DIR/$FILENAME -I $INTERVAL $FRAMES --hook-script $EXEC_DIR/$HOOKSCRIPT"
-CMD_FILE=$TIMELAPSE_DIR/gphoto_cmd
-echo "$CMD_CAPTURE >> $LOGFILE" > $CMD_FILE
 
-
-echo "[DEBUG] cmd file:"
-cat $CMD_FILE
-echo "-----------"
-
-
-#  IS this the best way to do it?? screen would probably just exit/not run the 
 # Create screen session with name matching timelapse dir
 SCREEN_NAME=TIMELAPSE-$TIMELAPSE_DIR
-screen -dmS $SCREEN_NAME
+screen -dmS $SCREEN_NAME -t log tail -f $LOGFILE
 
-screen -S $SCREEN_NAME -X screen -t log tail -f $LOGFILE
-#screen -S $SCREEN_NAME -X screen -t capture at -f $CMD_FILE $AT >>$LOGFILE
-
-SCREEN_CMD="screen -S $SCREEN_NAME -X screen -t capture $CMD_CAPTURE >> $CMD_FILE"
-SCREEN_CMD_FILE=$TIMELAPSE_DIR/screen_cmd
+SCREEN_CMD="screen -S $SCREEN_NAME -X screen -t capture $CMD_CAPTURE"
+SCREEN_CMD_FILE=$TIMELAPSE_DIR/.screen_cmd
 echo $SCREEN_CMD > $SCREEN_CMD_FILE
 
-# Schedule the job
-at -f $SCREEN_CMD_FILE $AT
+# Schedule the job; capture only last line output
+schedule=$(at -f $SCREEN_CMD_FILE $AT 2>&1 | tail -n+2)
+rm $SCREEN_CMD_FILE
+echo "Scheduled to start $schedule" | tee -a $LOGFILE
 
-# DEBUG attach immediately
-#screen -d -r $SCREEN_NAME
+echo "Output is available in screen session: $SCREEN_NAME" 
+
+exit 0
