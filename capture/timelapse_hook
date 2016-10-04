@@ -1,7 +1,41 @@
 #!/bin/bash
 
-echo "Action: $ACTION"
-echo "Argument: $ARGUMENT"
+PREVIEW_DIR=PREVIEW
+HOST=
+R_PATH=/wwwroot
+
+#echo "Action: $ACTION"
+#echo "Argument: $ARGUMENT"
+
+# gphoto2 actions:
+# init - gphoto2 initialized
+# start - command line options parsed
+# download - donwloaded captured file to $ARGUMENT
+# stop - final cleanups
+
+# On init, just exit
+if [[ $ACTION == 'init' ]]; then
+    exit 0
+fi
+
+# On download, generate preview
+if [[ $ACTION == 'download' ]]; then
+    # ARGUMENT stores the relative path to the downloaded file
+    file=$(basename $ARGUMENT)
+    
+    # Calling dirname again will remove the SOURCE directory, which we don't
+    # explicitly know.  dirname will replace it with '.' if empty.
+    dir=$(dirname $(dirname $ARGUMENT))
+
+    echo "Generating preview for '$file'..."
+    preview_file=${file%%.$ext}.jpg
+    CMD="exiftool -b -PreviewImage -w $dir/$PREVIEW_DIR/%f.jpg $ARGUMENT"
+    $CMD
+
+    # Copy latest preview to web server
+    #scp $PREVIEW_DIR/$preview_file $HOST:$R_PATH/preview.jpg
+fi
+
 
 exit 0
 

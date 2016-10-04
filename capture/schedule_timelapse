@@ -18,25 +18,22 @@ fi
 
 
 AT=$1
-FOLDER=$2
+TIMELAPSE_DIR=$2
 
 # Folder structure within folder:
 # SOURCE - raw files go here
 # PREVIEW - previews (preview jpg extracted from raw)
 # RENDER - rendered videos
-SOURCE_DIR=$SOURCE/SOURCE
-PREVIEW_DIR=$FOLDER/PREVIEW
+SOURCE_DIR=$TIMELAPSE_DIR/SOURCE
+PREVIEW_DIR=$TIMELAPSE_DIR/PREVIEW
 DATE=$(date +%Y%m%d)
 FILENAME="timelapse_${DATE}%5n.%C"
 INTERVAL=10
 
 # Hook script which is called by gphoto2 on each action (init, start download stop)
-PREFIX_DIR=$(dirname $0)
+EXEC_DIR=$(dirname $0)
 HOOKSCRIPT="timelapse_hook"
 
-
-# Set frames argument to empty string
-FRAMES=""
 # If the number of frames is not defined, use continuous
 if [[ ! -z $3 ]]; then
     # check that num frames specified is > 0 (no conversion done)
@@ -49,22 +46,56 @@ fi
 # How to validate the at time?
 
 # Check that the hook script exists and is executable
-if [[ ! -x $HOOKSCRIPT ]]; then
+if [[ ! -x $EXEC_DIR/$HOOKSCRIPT ]]; then
     echo "Hook script for gphoto2 is not executable."
     exit 1
 fi
 
 # Make the folder
 # Abort if the folder already exists since we don't inspect contents
-if [[ -e $FOLDER ]]; then
-    echo "Timelapse folder '$FOLDER' already exists."
+if [[ -e $TIMELAPSE_DIR ]]; then
+    echo "Timelapse folder '$TIMELAPSE_DIR' already exists."
+    exit 1
+fi
+mkdir $TIMELAPSE_DIR
+if [[ $? -ne 0 ]]; then
+    echo "Failed to create timelapse folder '$TIMELAPSE_DIR'."
     exit 1
 fi
 
-# Write screen config
+# Log file for status/output of gphoto2+hook scripts
+# Logfile will be overwritten (but it shouldn't exist since we just made the dir)
+LOGFILE=$TIMELAPSE_DIR/timelapse.log
+echo "Timelapse Scheduler started at $(date +'%D %T')" > $LOGFILE
+
+# Set frames argument to empty string
+FRAMES=""
+
 # DEBUG echo for now
-CMD_CAPTURE="gphoto2 --capture-image-and-download --filename=$SOURCE_DIR/$FILENAME -I $INTERVAL $FRAMES --hook-script $PREFIX_DIR/$HOOKSCRIPT"
-echo $CMD_CAPTURE
+CMD_CAPTURE="gphoto2 --capture-image-and-download --filename=$SOURCE_DIR/$FILENAME -I $INTERVAL $FRAMES --hook-script $EXEC_DIR/$HOOKSCRIPT"
+CMD_FILE=$TIMELAPSE_DIR/gphoto_cmd
+echo "$CMD_CAPTURE >> $LOGFILE" > $CMD_FILE
 
-# Run screen
 
+echo "[DEBUG] cmd file:"
+cat $CMD_FILE
+echo "-----------"
+
+
+#  IS this the best way to do it?? screen would probably just exit/not run the 
+# Create screen session with name matching timelapse dir
+SCREEN_NAME=TIMELAPSE-$TIMELAPSE_DIR
+screen -dmS $SCREEN_NAME
+
+screen -S $SCREEN_NAME -X screen -t log tail -f $LOGFILE
+#screen -S $SCREEN_NAME -X screen -t capture at -f $CMD_FILE $AT >>$LOGFILE
+
+SCREEN_CMD="screen -S $SCREEN_NAME -X screen -t capture $CMD_CAPTURE >> $CMD_FILE"
+SCREEN_CMD_FILE=$TIMELAPSE_DIR/screen_cmd
+echo $SCREEN_CMD > $SCREEN_CMD_FILE
+
+# Schedule the job
+at -f $SCREEN_CMD_FILE $AT
+
+# DEBUG attach immediately
+#screen -d -r $SCREEN_NAME
