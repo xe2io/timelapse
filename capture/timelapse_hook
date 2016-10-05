@@ -17,6 +17,18 @@ LOGFILE=$TIMELAPSE_LOGFILE
 # Log message to logfile on start and stop
 if [[ $ACTION == 'stop' ]]; then
     echo "$date - TIMELAPSE COMPLETE" | tee -a $LOGFILE
+
+    # Generate preview video
+    preview_video=preview.mp4
+    # TIMELAPSE_DIR exported by scheduler
+    ffmpeg -framerate 60 -i $TIMELAPSE_DIR/$PREVIEW_DIR/$TIMELAPSE_SEQNAME -c:v libx264 $TIMELAPSE_DIR/$preview_video
+    if [[ $? -ne 0 ]]; then
+        echo "$date - Failed to generate preview video for sequence." | tee -a $LOGFILE
+    else
+        # Copy preview video to web server
+        #scp $TIMELAPSE_DIR/$PREVIEW_DIR/$preview_file $HOST:$R_PATH/preview.mp4
+        echo "$date - Preview video generated from sequence." | tee -a $LOGFILE
+    fi
     exit 0
 fi
 
@@ -45,7 +57,7 @@ if [[ $ACTION == 'download' ]]; then
     $CMD
 
     # Copy latest preview to web server
-    #scp $PREVIEW_DIR/$preview_file $HOST:$R_PATH/preview.jpg
+    #scp $dir/$PREVIEW_DIR/$preview_file $HOST:$R_PATH/preview.jpg
 
     echo "$date - Generated preview '$preview_file' for '$file'" >> $LOGFILE
 fi

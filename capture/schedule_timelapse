@@ -22,6 +22,8 @@ fi
 
 AT=$1
 TIMELAPSE_DIR=$2
+# Export for hook script
+export TIMELAPSE_DIR
 
 # Folder structure within folder:
 # SOURCE - raw files go here
@@ -31,6 +33,8 @@ SOURCE_DIR=$TIMELAPSE_DIR/SOURCE
 PREVIEW_DIR=$TIMELAPSE_DIR/PREVIEW
 DATE=$(date +%Y%m%d)
 FILENAME="timelapse_${DATE}-%5n.%C"
+# Export the timelapse filename sequence format for hook script to generate preview
+export TIMELAPSE_SEQNAME="timelapse_${DATE}-%5d.jpg"
 INTERVAL=10
 
 # Hook script which is called by gphoto2 on each action (init, start download stop)
@@ -75,7 +79,7 @@ LOGFILE=$TIMELAPSE_DIR/timelapse.log
 # Export variable for hook script
 export TIMELAPSE_LOGFILE=$LOGFILE
 echo "Timelapse Scheduler started at $(date +'%D %T')" > $LOGFILE
-echo "--------------------------------------------------" >> $LOGFILE
+echo "-----------------------------------------------------" >> $LOGFILE
 
 CMD_CAPTURE="gphoto2 --capture-image-and-download --filename=$SOURCE_DIR/$FILENAME -I $INTERVAL $FRAMES --hook-script $EXEC_DIR/$HOOKSCRIPT"
 
