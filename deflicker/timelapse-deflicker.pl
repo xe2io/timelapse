@@ -41,8 +41,9 @@ use MCE::Loop;
 # Global variables
 my $VERBOSE       = 0;
 my $DEBUG         = 0;
-my $RollingWindow = 30;
+my $RollingWindow = 15;
 my $Passes        = 1;
+my $Geometry      = "";
 my $g_jobprogress = 0;
 my $g_progress;
 my $OUTPUT_DIR    = "Deflickered";
@@ -89,6 +90,8 @@ sub update_progressbar()
 sub worker_change_luminance
 {
     my $luminance_H_ref = shift;
+    my $geometry = shift || "";
+
 
     # probably not thread-safe
     verbose("Changing luminance of $luminance_H_ref->{filename} from $luminance_H_ref->{original} to $luminance_H_ref->{value}.\n");
@@ -97,6 +100,13 @@ sub worker_change_luminance
 
     my $image = Image::Magick->new;
     $image->Read( $luminance_H_ref->{filename} );
+
+    # Resize if geometry is provided
+    if($geometry ne "") 
+    {
+        my $err = $image->Resize(geometry => $geometry);
+        warn "$err" if "$err";
+    }
 
     $image->Mogrify( 'modulate', brightness => $brightness );
 
@@ -108,7 +118,7 @@ sub worker_change_luminance
 #####################
 # handle flags and arguments
 # Example: c == "-c", c: == "-c argument"
-my $opt_string = 'hvdw:p:';
+my $opt_string = 'hvdw:p:r:';
 getopts( "$opt_string", \my %opt ) or usage() and exit 1;
 
 # print help message if -h is invoked
@@ -121,6 +131,7 @@ $VERBOSE       = 1         if $opt{'v'};
 $DEBUG         = 1         if $opt{'d'};
 $RollingWindow = $opt{'w'} if defined( $opt{'w'} );
 $Passes        = $opt{'p'} if defined( $opt{'p'} );
+$Geometry      = $opt{'r'} if defined( $opt{'r'} );
 
 die "The rolling average window for luminance smoothing should be a positive number greater or equal to 2" if ( $RollingWindow < 2 );
 die "The number of passes should be a positive number greater or equal to 1"                               if ( $Passes < 1 );
@@ -183,7 +194,7 @@ if(! -d $OUTPUT_DIR)
 # Create the progress bar
 $g_jobprogress = 0;
 $g_progress = Term::ProgressBar->new( { count => $num_images } );
-my %ret_status = mce_loop { worker_change_luminance($luminance{$_}) } (0..$num_images-1);
+my %ret_status = mce_loop { worker_change_luminance($luminance{$_}, $Geometry) } (0..$num_images-1);
 
 #luminance_change();
 say "\n\nJob completed";
@@ -217,10 +228,13 @@ sub usage {
 
   # prints the correct use of this script
   say "Usage:";
-  say "-w    Choose the rolling average window for luminance smoothing (Default $RollingWindow)";
-  say "-p    Number of luminance smoothing passes (Default $Passes)";
+  say "-w    Choose the rolling average window for luminance smoothing (Default 15)";
+  say "-p    Number of luminance smoothing passes (Default 1)";
   say "       Sometimes 2 passes might give better results.";
   say "       Usually you would not want a number higher than 2.";
+  say "-r    [Optional] Resize the deflickered image per the given string, e.g.:";
+  say "       1920x1080^";
+  say "       See http://www.imagemagick.org/script/command-line-processing.php#geometry for more info";
   say "-h    Usage";
   say "-v    Verbose";
   say "-d    Debug";
