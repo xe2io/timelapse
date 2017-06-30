@@ -1,0 +1,5 @@
+sudo apt-get install -y --no-install-recommends \
+    perlmagick \
+    libfile-type-perl \
+    libterm-progressbar-perl \
+    libmce-perl
