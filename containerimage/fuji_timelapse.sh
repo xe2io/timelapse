@@ -23,9 +23,9 @@ if [ -x "storage_root/timelapse_hook" ]; then
     hook_script="$storage_root/timelapse_hook
 fi
 
-if [ !-z "$hook_script" ]; then
+if [ ! -z "$hook_script" ]; then
     echo "Using timelapse hook script: $hook_script"
     HOOK_SCRIPT_ARGS="--hook-script '$hook_script'"
 fi
 
-gphoto2 --wait-event-and-download --filename="timelapse_dir"/%6n.%C $HOOK_SCRIPT_ARGS
+gphoto2 --wait-event-and-download --filename="$timelapse_dir/%6n.%C" $HOOK_SCRIPT_ARGS
