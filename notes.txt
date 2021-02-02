@@ -1,0 +1,9 @@
+# Extract previews in parallel; exiftool is not CPU-bound
+t=$(( $(nproc) * 2 ))
+time ls *.raf | xargs -P $t -n $(( $(ls -1 | wc -l) / $t )) exiftool -b -PreviewImage -W preview/%f.%s
+
+ffmpeg -framerate 60 -pattern_type glob -i 'preview/*.jpg' -c:v libx264 -crf 23 -pix_fmt yuv420p -movflags +faststart preview.mp4
+
+# Rename files
+offset=1000
+ls -v | cat -n | while read n f;do t=$(printf "%06d.raf" "$(( n + $offset ))");mv $f $t ;done 
