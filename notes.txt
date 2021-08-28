@@ -7,3 +7,7 @@ ffmpeg -framerate 60 -pattern_type glob -i 'preview/*.jpg' -c:v libx264 -crf 23 
 # Rename files
 offset=1000
 ls -v | cat -n | while read n f;do t=$(printf "%06d.raf" "$(( n + $offset ))");mv $f $t ;done 
+
+# Process
+echo 4 > procfile;mkdir -p 3840x2160;
+/bin/time -f %e parallel -j procfile --joblog joblog.txt "darktable-cli {} timelapse.xmp 3840x2160/{/.}.jpg --width 3840 --height 2160 --apply-custom-presets 0 --core --disable-opencl --library ':memory:' --configdir '/dev/shm/dt{/.}/';rm -rf /dev/shm/dt{/.} &" ::: *.raf
