@@ -11,3 +11,7 @@ ls -v | cat -n | while read n f;do t=$(printf "%06d.raf" "$(( n + $offset ))");m
 # Process
 echo 4 > procfile;mkdir -p 3840x2160;
 /bin/time -f %e parallel -j procfile --joblog joblog.txt "darktable-cli {} timelapse.xmp 3840x2160/{/.}.jpg --width 3840 --height 2160 --apply-custom-presets 0 --core --disable-opencl --library ':memory:' --configdir '/dev/shm/dt{/.}/';rm -rf /dev/shm/dt{/.} &" ::: *.raf
+
+## Chunked Encode
+DJI Osmo Action (and many other cameras) split jpgs into folders of 999 files; the encode_chunked_timelapse.sh script encodes the folders into chunks then concatenates the chunks into a single file for efficiency
+
