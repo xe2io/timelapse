@@ -32,6 +32,8 @@ use strict "vars";
 use feature "say";
 use Image::Magick;
 use Data::Dumper;
+use File::Basename 'basename';
+use File::Spec::Functions 'catfile';
 use File::Type;
 use Term::ProgressBar;
 use MCE::Loop;
@@ -46,6 +48,7 @@ my $Passes        = 1;
 my $Geometry      = "";
 my $g_jobprogress = 0;
 my $g_progress;
+my $data_dir = ".";
 my $OUTPUT_DIR    = "Deflickered";
 
 #####################
@@ -111,14 +114,14 @@ sub worker_change_luminance
     $image->Mogrify( 'modulate', brightness => $brightness );
 
     #$image->Gamma( gamma => $gamma, channel => 'All' );
-    $image->Write( $OUTPUT_DIR . "/" . $luminance_H_ref->{filename} );
+    $image->Write( catfile($OUTPUT_DIR, basename($luminance_H_ref->{filename})) );
     MCE->do("update_progressbar");
 }
 
 #####################
 # handle flags and arguments
 # Example: c == "-c", c: == "-c argument"
-my $opt_string = 'hvdw:p:r:';
+my $opt_string = 'hvdw:p:r:i:o:';
 getopts( "$opt_string", \my %opt ) or usage() and exit 1;
 
 # print help message if -h is invoked
@@ -132,14 +135,16 @@ $DEBUG         = 1         if $opt{'d'};
 $RollingWindow = $opt{'w'} if defined( $opt{'w'} );
 $Passes        = $opt{'p'} if defined( $opt{'p'} );
 $Geometry      = $opt{'r'} if defined( $opt{'r'} );
+$data_dir      = $opt{'i'} if defined( $opt{'i'} );
+$OUTPUT_DIR    = $opt{'o'} if defined( $opt{'o'} );
 
 die "The rolling average window for luminance smoothing should be a positive number greater or equal to 2" if ( $RollingWindow < 2 );
 die "The number of passes should be a positive number greater or equal to 1"                               if ( $Passes < 1 );
 
 # main program content
+
 my %luminance;
 
-my $data_dir = ".";
 
 opendir( DATA_DIR, $data_dir ) || die "Cannot open $data_dir\n";
 my @files = readdir(DATA_DIR);
@@ -148,10 +153,10 @@ my @files = readdir(DATA_DIR);
 # Make sure we only use image files
 my @img_files = ();
 foreach my $filename (@files) {
+    $filename = catfile($data_dir, $filename);
     my $ft   = File::Type->new();
     my $type = $ft->mime_type($filename);
 
-    #say "$data_dir/$filename";
     my ( $filetype, $fileformat ) = split( /\//, $type );
     if($filetype eq "image")
     {
@@ -228,6 +233,8 @@ sub usage {
 
   # prints the correct use of this script
   say "Usage:";
+  say "-i    Input directory with files";
+  say "-o    Output directory to write deflickered images";
   say "-w    Choose the rolling average window for luminance smoothing (Default 15)";
   say "-p    Number of luminance smoothing passes (Default 1)";
   say "       Sometimes 2 passes might give better results.";
